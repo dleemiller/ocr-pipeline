@@ -1,0 +1,76 @@
+[project]
+name = "ocr-project"
+version = "0.1.0"
+description = "OCR processing using DeepSeek-OCR and vLLM for efficient document-to-markdown conversion"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "vllm",
+    "torch",
+    "torchvision",
+    "transformers",
+    "tokenizers",
+    "einops",
+    "addict",
+    "easydict",
+    "pillow",
+    "click",
+    "pdf2image",
+    "openai",
+    "rich",
+    "httpx",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "pre-commit",
+]
+cu128 = []
+
+[project.scripts]
+ocr = "ocr_project.cli.main:main"
+ocr-server = "ocr_project.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ocr_project"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--cov=src --cov-report=term-missing --cov-report=html"
+
+[tool.coverage.run]
+source = ["src/ocr_project"]
+omit = ["*/tests/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu128", marker = "extra == 'cu128'" },
+]
+torchvision = [
+    { index = "pytorch-cu128", marker = "extra == 'cu128'" },
+]
