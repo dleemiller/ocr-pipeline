@@ -1,7 +1,9 @@
 """HuggingFace dataset processor for OCR."""
 
 import io
+import tempfile
 from collections.abc import Generator
+from pathlib import Path
 from typing import Any
 
 from datasets import load_dataset
@@ -11,6 +13,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from ocr_project.dataset.config import DatasetConfig, SubsetConfig
 from ocr_project.models.vllm_client import VLLMClient
 from ocr_project.utils.file_io import save_markdown
+from ocr_project.utils.pdf import pdf_to_images
 
 
 class DatasetProcessor:
@@ -39,27 +42,49 @@ class DatasetProcessor:
 
     def _extract_content_from_bytes(
         self, content_bytes: bytes, file_extension: str | None = None
-    ) -> Image.Image | None:
-        """Extract image from bytes column.
+    ) -> list[tuple[int, Image.Image]]:
+        """Extract images from bytes column.
 
         Args:
             content_bytes: Raw file bytes
             file_extension: File extension to determine type
 
         Returns:
-            PIL Image if successfully decoded, None otherwise
+            List of (page_number, Image) tuples. For images, returns [(1, image)].
+            For PDFs, returns [(page_num, image), ...] for each page.
         """
+        # Try to open as image directly
         try:
-            # Try to open as image directly
-            return Image.open(io.BytesIO(content_bytes))
+            img = Image.open(io.BytesIO(content_bytes))
+            return [(1, img)]
         except Exception:
-            # If not an image, might need conversion (e.g., PDF)
-            # For now, skip non-image content
-            return None
+            pass
+
+        # If extension suggests PDF, try to convert
+        if file_extension and file_extension.lower() == ".pdf":
+            try:
+                # Write bytes to temporary file for pdf2image
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                    tmp.write(content_bytes)
+                    tmp_path = Path(tmp.name)
+
+                try:
+                    # Convert PDF to images
+                    pages = pdf_to_images(tmp_path)
+                    return pages
+                finally:
+                    # Clean up temp file
+                    tmp_path.unlink(missing_ok=True)
+
+            except Exception:
+                pass
+
+        # Unable to extract
+        return []
 
     def _process_row(
         self, row: dict[str, Any], subset_config: SubsetConfig
-    ) -> list[tuple[str, Image.Image]]:
+    ) -> list[tuple[str, int, Image.Image]]:
         """Extract images from a dataset row.
 
         Args:
@@ -67,25 +92,38 @@ class DatasetProcessor:
             subset_config: Subset configuration
 
         Returns:
-            List of (column_name, image) tuples
+            List of (column_name, page_number, image) tuples
         """
         images = []
+
+        # Check if content is available (if column specified)
+        if subset_config.content_available_column:
+            if not row.get(subset_config.content_available_column, True):
+                # Content not available, skip this row
+                return images
 
         # Process image columns
         for col in subset_config.image_columns:
             if col in row and row[col] is not None:
                 if isinstance(row[col], Image.Image):
-                    images.append((col, row[col]))
+                    images.append((col, 1, row[col]))
 
         # Process content columns (bytes)
         for col in subset_config.content_columns:
             if col in row and row[col] is not None:
                 # Check if it's bytes
                 if isinstance(row[col], bytes):
-                    file_ext = row.get("extension") if "extension" in row else None
-                    img = self._extract_content_from_bytes(row[col], file_ext)
-                    if img is not None:
-                        images.append((col, img))
+                    # Get file extension from configured column or fallback to 'extension'
+                    file_ext = None
+                    if subset_config.extension_column and subset_config.extension_column in row:
+                        file_ext = row[subset_config.extension_column]
+                    elif "extension" in row:
+                        file_ext = row["extension"]
+
+                    pages = self._extract_content_from_bytes(row[col], file_ext)
+                    # Add all pages from the content
+                    for page_num, img in pages:
+                        images.append((col, page_num, img))
 
         return images
 
@@ -147,24 +185,42 @@ class DatasetProcessor:
                 # Extract images from row
                 images = self._process_row(row, subset_config)
 
-                # Process each image
-                for col_name, image in images:
+                # Process each image (including PDF pages)
+                for col_name, page_num, image in images:
                     # Generate identifier
                     row_id = row.get("path", f"row_{idx}")
-                    identifier = f"{subset_config.name}/{split}/{row_id}/{col_name}"
+                    if page_num > 1:
+                        identifier = (
+                            f"{subset_config.name}/{split}/{row_id}/{col_name}/page{page_num}"
+                        )
+                    else:
+                        identifier = f"{subset_config.name}/{split}/{row_id}/{col_name}"
 
                     try:
+                        # Generate output path
+                        safe_id = row_id.replace("/", "_").replace("\\", "_").replace(".pdf", "")
+                        if page_num > 1:
+                            out_path = (
+                                self.config.output_dir
+                                / subset_config.name
+                                / split
+                                / f"{safe_id}_{col_name}_page{page_num:03d}.md"
+                            )
+                        else:
+                            out_path = (
+                                self.config.output_dir
+                                / subset_config.name
+                                / split
+                                / f"{safe_id}_{col_name}.md"
+                            )
+
+                        # Check if file exists and skip if not overwriting
+                        if out_path.exists() and not self.config.overwrite:
+                            yield (identifier, str(out_path), "skipped (already exists)")
+                            continue
+
                         # Process with OCR
                         result = self.client.process_image(image, self.resolution)
-
-                        # Generate output path
-                        safe_id = row_id.replace("/", "_").replace("\\", "_")
-                        out_path = (
-                            self.config.output_dir
-                            / subset_config.name
-                            / split
-                            / f"{safe_id}_{col_name}.md"
-                        )
 
                         # Save result
                         save_markdown(result, out_path)
@@ -189,14 +245,18 @@ class DatasetProcessor:
             for subset_config in self.config.subsets:
                 task = progress.add_task(f"Processing {subset_config.name}...", total=None)
 
-                subset_stats = {"success": 0, "error": 0, "total": 0}
+                subset_stats = {"success": 0, "error": 0, "skipped": 0, "total": 0}
 
                 for identifier, output_path, error in self.process_subset(subset_config):
                     subset_stats["total"] += 1
 
                     if error:
-                        subset_stats["error"] += 1
-                        progress.console.print(f"[red]Error processing {identifier}: {error}")
+                        if error.startswith("skipped"):
+                            subset_stats["skipped"] += 1
+                            progress.console.print(f"[yellow]Skipped {identifier} -> {output_path}")
+                        else:
+                            subset_stats["error"] += 1
+                            progress.console.print(f"[red]Error processing {identifier}: {error}")
                     else:
                         subset_stats["success"] += 1
                         progress.console.print(f"[green]Processed {identifier} -> {output_path}")
@@ -206,7 +266,8 @@ class DatasetProcessor:
                 progress.update(
                     task,
                     description=f"[green]Completed {subset_config.name} "
-                    f"({subset_stats['success']}/{subset_stats['total']} successful)",
+                    f"({subset_stats['success']}/{subset_stats['total']} successful, "
+                    f"{subset_stats['skipped']} skipped)",
                 )
                 stats[subset_config.name] = subset_stats
 

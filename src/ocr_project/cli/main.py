@@ -249,7 +249,13 @@ def batch(input_dir: Path, output: Path, resolution: str, batch_size: int) -> No
     default="base",
     help="Resolution mode for processing",
 )
-def dataset(config_path: Path, server_url: str, resolution: str) -> None:
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    default=False,
+    help="Overwrite existing output files (default: skip existing)",
+)
+def dataset(config_path: Path, server_url: str, resolution: str, overwrite: bool) -> None:
     """Process HuggingFace datasets using a YAML configuration file.
 
     The config file should specify dataset name, subsets, splits,
@@ -266,6 +272,9 @@ def dataset(config_path: Path, server_url: str, resolution: str) -> None:
     # Load configuration
     try:
         config = DatasetConfig.from_yaml(config_path)
+        # Override overwrite setting from CLI flag
+        if overwrite:
+            config.overwrite = True
     except Exception as e:
         click.echo(f"Error loading configuration: {e}", err=True)
         return
@@ -275,6 +284,7 @@ def dataset(config_path: Path, server_url: str, resolution: str) -> None:
     click.echo(f"Subsets: {len(config.subsets)}")
     if config.max_samples:
         click.echo(f"Max samples per subset: {config.max_samples}")
+    click.echo(f"Overwrite existing files: {config.overwrite}")
     click.echo()
 
     # Initialize processor
@@ -298,6 +308,7 @@ def dataset(config_path: Path, server_url: str, resolution: str) -> None:
             click.echo(f"\n{subset_name}:")
             click.echo(f"  Total: {subset_stats['total']}")
             click.echo(f"  Success: {subset_stats['success']}")
+            click.echo(f"  Skipped: {subset_stats['skipped']}")
             click.echo(f"  Errors: {subset_stats['error']}")
 
     except Exception as e:
