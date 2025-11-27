@@ -90,6 +90,63 @@ uv run ocr batch input_docs/ --output processed/
 uv run ocr batch scans/ --output results/ --resolution base
 ```
 
+### Processing HuggingFace Datasets
+
+The CLI supports processing HuggingFace datasets using YAML configuration files. This is useful for processing large-scale document collections.
+
+```bash
+# Process a dataset using a configuration file
+uv run ocr dataset configs/epstractor-raw.yaml
+
+# Use custom server URL
+uv run ocr dataset configs/my-dataset.yaml --server-url http://localhost:8080/v1
+
+# Use specific resolution mode
+uv run ocr dataset configs/my-dataset.yaml --resolution large
+```
+
+#### Dataset Configuration Format
+
+Create a YAML configuration file (see `configs/epstractor-raw.yaml` for a complete example):
+
+```yaml
+name: user/dataset-name              # HuggingFace dataset identifier
+output_dir: ./output/dataset-name    # Where to save processed files
+streaming: true                      # Use streaming mode (recommended for large datasets)
+max_samples: null                    # Limit samples per subset (null = process all)
+
+subsets:
+  - name: subset1                    # Subset/config name
+    splits:                          # List of splits to process
+      - train
+      - test
+    content_columns:                 # Columns containing bytes/binary data
+      - content
+      - data
+    image_columns:                   # Columns containing PIL Images
+      - image
+    filter_column: file_type         # Optional: column to filter by
+    filter_values:                   # Optional: values to include
+      - image
+      - document
+```
+
+**Key Features:**
+- **Multi-subset support**: Process multiple configurations in one run
+- **Flexible column mapping**: Handle bytes columns, image columns, or both
+- **Filtering**: Process only specific file types or categories
+- **Streaming**: Efficient processing of large datasets without loading all data into memory
+- **Progress tracking**: Real-time progress bars and statistics
+
+**Example with epstractor-raw dataset:**
+
+This dataset contains public records with document images. The provided configuration processes three subsets:
+- `epstein_estate_2025_09`: 5 files (0.09 GB)
+- `epstein_estate_2025_11`: 26,035 files (36.56 GB)
+- `house_doj_2025_09`: 33,380 files (78.58 GB)
+
+For testing, set `max_samples: 10` in the config to process only a small subset.
+
 ### Output Structure
 
 The batch command mirrors your input directory structure:
@@ -158,10 +215,11 @@ uv run pytest -v                           # Verbose output
 ocr-project/
 ├── src/ocr_project/
 │   ├── cli/           # Command-line interface
-│   ├── models/        # DeepSeek-OCR model wrapper
-│   └── utils/         # Utility functions
-├── tests/             # Test suite
-├── configs/           # Configuration files
+│   ├── models/        # DeepSeek-OCR model wrapper and vLLM client
+│   ├── dataset/       # HuggingFace dataset processing
+│   └── utils/         # Utility functions (image, PDF, file I/O)
+├── tests/             # Test suite (43 tests, 41 passing)
+├── configs/           # Dataset configuration files (YAML)
 └── output/            # Default output directory
 ```
 
