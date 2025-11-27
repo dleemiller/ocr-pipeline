@@ -197,9 +197,6 @@ class DatasetProcessor:
                         identifier = f"{subset_config.name}/{split}/{row_id}/{col_name}"
 
                     try:
-                        # Process with OCR
-                        result = self.client.process_image(image, self.resolution)
-
                         # Generate output path
                         safe_id = row_id.replace("/", "_").replace("\\", "_").replace(".pdf", "")
                         if page_num > 1:
@@ -216,6 +213,14 @@ class DatasetProcessor:
                                 / split
                                 / f"{safe_id}_{col_name}.md"
                             )
+
+                        # Check if file exists and skip if not overwriting
+                        if out_path.exists() and not self.config.overwrite:
+                            yield (identifier, str(out_path), "skipped (already exists)")
+                            continue
+
+                        # Process with OCR
+                        result = self.client.process_image(image, self.resolution)
 
                         # Save result
                         save_markdown(result, out_path)
@@ -240,14 +245,18 @@ class DatasetProcessor:
             for subset_config in self.config.subsets:
                 task = progress.add_task(f"Processing {subset_config.name}...", total=None)
 
-                subset_stats = {"success": 0, "error": 0, "total": 0}
+                subset_stats = {"success": 0, "error": 0, "skipped": 0, "total": 0}
 
                 for identifier, output_path, error in self.process_subset(subset_config):
                     subset_stats["total"] += 1
 
                     if error:
-                        subset_stats["error"] += 1
-                        progress.console.print(f"[red]Error processing {identifier}: {error}")
+                        if error.startswith("skipped"):
+                            subset_stats["skipped"] += 1
+                            progress.console.print(f"[yellow]Skipped {identifier} -> {output_path}")
+                        else:
+                            subset_stats["error"] += 1
+                            progress.console.print(f"[red]Error processing {identifier}: {error}")
                     else:
                         subset_stats["success"] += 1
                         progress.console.print(f"[green]Processed {identifier} -> {output_path}")
@@ -257,7 +266,8 @@ class DatasetProcessor:
                 progress.update(
                     task,
                     description=f"[green]Completed {subset_config.name} "
-                    f"({subset_stats['success']}/{subset_stats['total']} successful)",
+                    f"({subset_stats['success']}/{subset_stats['total']} successful, "
+                    f"{subset_stats['skipped']} skipped)",
                 )
                 stats[subset_config.name] = subset_stats
 

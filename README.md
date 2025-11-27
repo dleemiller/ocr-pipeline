@@ -103,6 +103,9 @@ uv run ocr dataset configs/my-dataset.yaml --server-url http://localhost:8080/v1
 
 # Use specific resolution mode
 uv run ocr dataset configs/my-dataset.yaml --resolution large
+
+# Overwrite existing output files (default: skip existing)
+uv run ocr dataset configs/my-dataset.yaml --overwrite
 ```
 
 #### Dataset Configuration Format

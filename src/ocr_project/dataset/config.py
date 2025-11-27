@@ -29,6 +29,7 @@ class DatasetConfig:
     output_dir: Path
     streaming: bool = True
     max_samples: int | None = None
+    overwrite: bool = False  # Whether to overwrite existing output files
 
     @classmethod
     def from_yaml(cls, path: Path) -> "DatasetConfig":
@@ -63,6 +64,7 @@ class DatasetConfig:
             output_dir=Path(data["output_dir"]),
             streaming=data.get("streaming", True),
             max_samples=data.get("max_samples"),
+            overwrite=data.get("overwrite", False),
         )
 
     def to_yaml(self, path: Path) -> None:
@@ -76,6 +78,7 @@ class DatasetConfig:
             "output_dir": str(self.output_dir),
             "streaming": self.streaming,
             "max_samples": self.max_samples,
+            "overwrite": self.overwrite,
             "subsets": [
                 {
                     "name": s.name,
