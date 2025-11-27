@@ -19,6 +19,8 @@ dependencies = [
     "openai",
     "rich",
     "httpx",
+    "datasets",
+    "pyyaml",
 ]
 
 [project.optional-dependencies]

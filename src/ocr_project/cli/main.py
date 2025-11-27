@@ -235,6 +235,77 @@ def batch(input_dir: Path, output: Path, resolution: str, batch_size: int) -> No
 
 
 @cli.command()
+@click.argument("config_path", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--server-url",
+    type=str,
+    default="http://127.0.0.1:8000/v1",
+    help="URL of vLLM server",
+)
+@click.option(
+    "--resolution",
+    "-r",
+    type=click.Choice(["tiny", "small", "base", "large", "gundam"]),
+    default="base",
+    help="Resolution mode for processing",
+)
+def dataset(config_path: Path, server_url: str, resolution: str) -> None:
+    """Process HuggingFace datasets using a YAML configuration file.
+
+    The config file should specify dataset name, subsets, splits,
+    and columns to process. See configs/epstractor-raw.yaml for an example.
+
+    Args:
+        config_path: Path to YAML configuration file
+        server_url: URL of vLLM server
+        resolution: Resolution mode for processing
+    """
+    from ocr_project.dataset.config import DatasetConfig
+    from ocr_project.dataset.processor import DatasetProcessor
+
+    # Load configuration
+    try:
+        config = DatasetConfig.from_yaml(config_path)
+    except Exception as e:
+        click.echo(f"Error loading configuration: {e}", err=True)
+        return
+
+    click.echo(f"Processing dataset: {config.name}")
+    click.echo(f"Output directory: {config.output_dir}")
+    click.echo(f"Subsets: {len(config.subsets)}")
+    if config.max_samples:
+        click.echo(f"Max samples per subset: {config.max_samples}")
+    click.echo()
+
+    # Initialize processor
+    try:
+        processor = DatasetProcessor(config, server_url, resolution)
+    except RuntimeError as e:
+        click.echo(f"Error: {e}", err=True)
+        click.echo("\nMake sure to start the server first in another terminal:", err=True)
+        click.echo("  uv run ocr-server", err=True)
+        return
+
+    # Process all subsets
+    try:
+        stats = processor.process_all()
+
+        # Report final statistics
+        click.echo("\n" + "=" * 60)
+        click.echo("PROCESSING COMPLETE")
+        click.echo("=" * 60)
+        for subset_name, subset_stats in stats.items():
+            click.echo(f"\n{subset_name}:")
+            click.echo(f"  Total: {subset_stats['total']}")
+            click.echo(f"  Success: {subset_stats['success']}")
+            click.echo(f"  Errors: {subset_stats['error']}")
+
+    except Exception as e:
+        click.echo(f"Error processing dataset: {e}", err=True)
+        return
+
+
+@cli.command()
 @click.option(
     "--model",
     type=str,

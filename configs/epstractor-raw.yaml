@@ -1,0 +1,49 @@
+# Configuration for public-records-research/epstractor-raw dataset
+# This dataset contains documents from Epstein estate and DOJ releases
+
+name: public-records-research/epstractor-raw
+output_dir: ./output/epstractor-raw
+streaming: true
+max_samples: null  # Set to a number to limit processing (e.g., 100 for testing)
+
+subsets:
+  # Epstein estate release from September 2025 (5 files, 0.09 GB)
+  - name: epstein_estate_2025_09
+    splits:
+      - train
+    content_columns:
+      - content  # Binary content column containing file bytes
+    image_columns: []  # No dedicated image columns
+    filter_column: file_type  # Only process certain file types
+    filter_values:
+      - image  # Process images
+      - document  # Process documents (PDFs, etc.)
+
+  # Epstein estate release from November 2025 (26,035 files, 36.56 GB)
+  # WARNING: This is a large dataset - consider using max_samples for testing
+  - name: epstein_estate_2025_11
+    splits:
+      - train
+    content_columns:
+      - content
+    image_columns: []
+    filter_column: file_type
+    filter_values:
+      - image
+      - document
+
+  # House DOJ release from September 2025 (33,380 files, 78.58 GB)
+  # WARNING: This is a very large dataset - strongly recommend using max_samples
+  - name: house_doj_2025_09
+    splits:
+      - train
+    content_columns:
+      - content
+    image_columns: []
+    filter_column: file_type
+    filter_values:
+      - image
+      - document
+
+  # Note: large_files subset is excluded as it contains only metadata
+  # (video files without embedded content)
