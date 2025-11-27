@@ -16,6 +16,8 @@ class SubsetConfig:
     image_columns: list[str] = field(default_factory=list)
     filter_column: str | None = None
     filter_values: list[str] | None = None
+    extension_column: str | None = None  # Column containing file extensions
+    content_available_column: str | None = None  # Column indicating if content is available
 
 
 @dataclass
@@ -49,6 +51,8 @@ class DatasetConfig:
                 image_columns=s.get("image_columns", []),
                 filter_column=s.get("filter_column"),
                 filter_values=s.get("filter_values"),
+                extension_column=s.get("extension_column"),
+                content_available_column=s.get("content_available_column"),
             )
             for s in data["subsets"]
         ]
@@ -80,6 +84,8 @@ class DatasetConfig:
                     "image_columns": s.image_columns,
                     "filter_column": s.filter_column,
                     "filter_values": s.filter_values,
+                    "extension_column": s.extension_column,
+                    "content_available_column": s.content_available_column,
                 }
                 for s in self.subsets
             ],

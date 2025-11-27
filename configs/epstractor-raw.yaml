@@ -14,6 +14,8 @@ subsets:
     content_columns:
       - content  # Binary content column containing file bytes
     image_columns: []  # No dedicated image columns
+    extension_column: extension  # Column containing file extensions (.pdf, .jpg, etc.)
+    content_available_column: content_available  # Column indicating if content is available
     filter_column: file_type  # Only process certain file types
     filter_values:
       - image  # Process images
@@ -27,6 +29,8 @@ subsets:
     content_columns:
       - content
     image_columns: []
+    extension_column: extension
+    content_available_column: content_available
     filter_column: file_type
     filter_values:
       - image
@@ -40,6 +44,8 @@ subsets:
     content_columns:
       - content
     image_columns: []
+    extension_column: extension
+    content_available_column: content_available
     filter_column: file_type
     filter_values:
       - image
