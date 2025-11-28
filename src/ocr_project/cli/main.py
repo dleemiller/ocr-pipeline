@@ -342,12 +342,26 @@ def dataset(config_path: Path, server_url: str, resolution: str, overwrite: bool
     default=500,
     help="Maximum shard size in MB (default: 500)",
 )
+@click.option(
+    "--ocr-model",
+    type=str,
+    default="deepseek-ai/DeepSeek-OCR",
+    help="OCR model used for processing (for metadata)",
+)
+@click.option(
+    "--resolution",
+    type=str,
+    default="base",
+    help="Resolution mode used (tiny/small/base/large/gundam)",
+)
 def export(
     output_dir: Path,
     dataset_name: str,
     subset: str | None,
     split: str | None,
     max_shard_size: int,
+    ocr_model: str,
+    resolution: str,
 ) -> None:
     """Export OCR markdown files to HuggingFace dataset format.
 
@@ -365,10 +379,12 @@ def export(
 
     click.echo(f"Exporting dataset: {dataset_name}")
     click.echo(f"Source directory: {output_dir}")
+    click.echo(f"OCR model: {ocr_model}")
+    click.echo(f"Resolution: {resolution}")
     click.echo(f"Max shard size: {max_shard_size}MB")
     click.echo()
 
-    exporter = DatasetExporter(output_dir, dataset_name)
+    exporter = DatasetExporter(output_dir, dataset_name, ocr_model, resolution)
 
     try:
         if subset:

@@ -12,15 +12,25 @@ from rich.progress import Progress
 class DatasetExporter:
     """Export OCR markdown files to HuggingFace dataset format."""
 
-    def __init__(self, output_dir: Path, dataset_name: str):
+    def __init__(
+        self,
+        output_dir: Path,
+        dataset_name: str,
+        ocr_model: str = "deepseek-ai/DeepSeek-OCR",
+        resolution: str = "base",
+    ):
         """Initialize dataset exporter.
 
         Args:
             output_dir: Directory containing OCR markdown output files
             dataset_name: Name for the dataset
+            ocr_model: Model used for OCR processing
+            resolution: Resolution mode used (tiny/small/base/large/gundam)
         """
         self.output_dir = Path(output_dir)
         self.dataset_name = dataset_name
+        self.ocr_model = ocr_model
+        self.resolution = resolution
 
     def collect_files(self, subset_dir: Path) -> list[dict[str, Any]]:
         """Collect all markdown files from a subset directory.
@@ -61,14 +71,25 @@ class DatasetExporter:
             else:
                 base_name = filename
 
+            # Calculate text statistics
+            lines = text.split("\n")
+            word_count = len(text.split())
+
+            # Check if text is mostly empty (common for blank pages)
+            non_whitespace = len(text.strip())
+            is_empty = non_whitespace < 10  # Less than 10 chars is basically empty
+
             record = {
-                "id": str(relative_path),
                 "source_file": base_name,
-                "split": split,
                 "page_number": page_num,
+                "split": split,
                 "text": text,
-                "text_length": len(text),
-                "file_path": str(relative_path),
+                "ocr_model": self.ocr_model,
+                "resolution": self.resolution,
+                "char_count": len(text),
+                "word_count": word_count,
+                "line_count": len(lines),
+                "is_empty": is_empty,
             }
 
             records.append(record)
@@ -88,13 +109,16 @@ class DatasetExporter:
         # Define schema with proper types
         schema = pa.schema(
             [
-                ("id", pa.string()),
                 ("source_file", pa.string()),
-                ("split", pa.string()),
                 ("page_number", pa.int32()),
+                ("split", pa.string()),
                 ("text", pa.string()),
-                ("text_length", pa.int64()),
-                ("file_path", pa.string()),
+                ("ocr_model", pa.string()),
+                ("resolution", pa.string()),
+                ("char_count", pa.int32()),
+                ("word_count", pa.int32()),
+                ("line_count", pa.int32()),
+                ("is_empty", pa.bool_()),
             ]
         )
 
@@ -276,13 +300,16 @@ This dataset contains OCR-extracted text from documents processed using DeepSeek
 
 ### Data Fields
 
-- `id`: Unique identifier for the record
-- `source_file`: Original source filename (without page numbers)
+- `source_file`: Original source filename (without page numbers or extensions)
+- `page_number`: Page number for multi-page documents (null for single-page images)
 - `split`: Dataset split (train/test/validation)
-- `page_number`: Page number for multi-page documents (null for single-page)
 - `text`: OCR-extracted text in markdown format
-- `text_length`: Length of extracted text in characters
-- `file_path`: Relative path to the source markdown file
+- `ocr_model`: Model used for OCR extraction (e.g., "deepseek-ai/DeepSeek-OCR")
+- `resolution`: Resolution mode used during OCR (tiny/small/base/large/gundam)
+- `char_count`: Number of characters in the extracted text
+- `word_count`: Number of words in the extracted text
+- `line_count`: Number of lines in the extracted text
+- `is_empty`: Boolean indicating if the page is essentially blank (<10 non-whitespace chars)
 
 ### Subsets
 
