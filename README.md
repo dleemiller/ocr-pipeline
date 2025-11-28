@@ -150,6 +150,32 @@ This dataset contains public records with document images. The provided configur
 
 For testing, set `max_samples: 10` in the config to process only a small subset.
 
+### Exporting to HuggingFace Format
+
+After processing your documents, you can export the markdown files to HuggingFace-ready parquet format:
+
+```bash
+# Export all subsets to parquet
+uv run ocr export output/epstractor-raw --dataset-name my-ocr-dataset
+
+# Export a specific subset
+uv run ocr export output/epstractor-raw --dataset-name my-ocr-dataset --subset epstein_estate_2025_09
+
+# Export with custom shard size
+uv run ocr export output/epstractor-raw --dataset-name my-ocr-dataset --max-shard-size 1000
+```
+
+This will create a `dataset/` directory with:
+- Parquet files (automatically sharded if needed)
+- README.md dataset card
+- Ready for upload to HuggingFace Hub
+
+To upload:
+```bash
+huggingface-cli login
+huggingface-cli upload username/my-ocr-dataset output/epstractor-raw/dataset
+```
+
 ### Output Structure
 
 The batch command mirrors your input directory structure:

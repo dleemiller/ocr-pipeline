@@ -317,6 +317,103 @@ def dataset(config_path: Path, server_url: str, resolution: str, overwrite: bool
 
 
 @cli.command()
+@click.argument("output_dir", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--dataset-name",
+    "-n",
+    type=str,
+    required=True,
+    help="Name for the dataset",
+)
+@click.option(
+    "--subset",
+    "-s",
+    type=str,
+    help="Export only a specific subset (default: export all)",
+)
+@click.option(
+    "--split",
+    type=str,
+    help="Export only a specific split within subset",
+)
+@click.option(
+    "--max-shard-size",
+    type=int,
+    default=500,
+    help="Maximum shard size in MB (default: 500)",
+)
+def export(
+    output_dir: Path,
+    dataset_name: str,
+    subset: str | None,
+    split: str | None,
+    max_shard_size: int,
+) -> None:
+    """Export OCR markdown files to HuggingFace dataset format.
+
+    Converts a directory of markdown files into parquet format suitable
+    for uploading to HuggingFace Hub.
+
+    Args:
+        output_dir: Directory containing OCR markdown output files
+        dataset_name: Name for the dataset
+        subset: Optional specific subset to export
+        split: Optional specific split to export
+        max_shard_size: Maximum shard size in MB
+    """
+    from ocr_project.dataset.export import DatasetExporter
+
+    click.echo(f"Exporting dataset: {dataset_name}")
+    click.echo(f"Source directory: {output_dir}")
+    click.echo(f"Max shard size: {max_shard_size}MB")
+    click.echo()
+
+    exporter = DatasetExporter(output_dir, dataset_name)
+
+    try:
+        if subset:
+            # Export single subset
+            click.echo(f"Exporting subset: {subset}")
+            if split:
+                click.echo(f"  Split: {split}")
+
+            output_path = exporter.export_subset(subset, split)
+            click.echo(f"\n[green]✓ Created: {output_path}")
+
+        else:
+            # Export all subsets
+            results = exporter.export_all(max_shard_size_mb=max_shard_size)
+
+            click.echo("\n" + "=" * 60)
+            click.echo("EXPORT COMPLETE")
+            click.echo("=" * 60)
+
+            total_files = sum(len(files) for files in results.values())
+            click.echo(f"\nCreated {total_files} parquet file(s)")
+
+            for subset_name, files in results.items():
+                click.echo(f"\n{subset_name}:")
+                for file_path in files:
+                    click.echo(f"  - {file_path.name}")
+
+            # Create dataset card
+            card_path = output_dir / "dataset" / "README.md"
+            exporter.create_dataset_card(card_path)
+            click.echo(f"\n✓ Created dataset card: {card_path}")
+
+            dataset_dir = output_dir / "dataset"
+            click.echo("\n[bold green]Dataset ready for upload:")
+            click.echo(f"  Directory: {dataset_dir}")
+            click.echo("\nTo upload to HuggingFace:")
+            click.echo("  huggingface-cli login")
+            click.echo(f"  huggingface-cli upload <username>/{dataset_name} {dataset_dir}")
+
+    except Exception as e:
+        click.echo(f"Error exporting dataset: {e}", err=True)
+        return
+
+
+@cli.command()
 @click.option(
     "--model",
     type=str,
