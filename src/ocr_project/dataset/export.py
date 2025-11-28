@@ -251,15 +251,25 @@ class DatasetExporter:
 
         return results
 
-    def create_dataset_card(self, output_path: Path | None = None) -> str:
+    def create_dataset_card(
+        self,
+        output_path: Path | None = None,
+        license: str = "mit",
+        task_categories: list[str] | None = None,
+    ) -> str:
         """Create a dataset card (README.md) for HuggingFace.
 
         Args:
             output_path: Optional path to save the card
+            license: License identifier (default: mit)
+            task_categories: Task categories (default: text-generation)
 
         Returns:
             Dataset card content as string
         """
+        if task_categories is None:
+            task_categories = ["text-generation"]
+
         # Count files and records
         total_files = 0
         total_records = 0
@@ -275,18 +285,93 @@ class DatasetExporter:
                 total_files += subset_stats[subset_dir.name]["files"]
                 total_records += len(records)
 
-        card = f"""---
-license: mit
+        # Get list of parquet files and organize by config
+        dataset_dir = self.output_dir / "dataset"
+        configs = {}
+        for parquet_file in dataset_dir.glob("*.parquet"):
+            # Parse filename: subset-split[-shard].parquet
+            name = parquet_file.stem
+            if "-train" in name:
+                subset = name.split("-train")[0]
+                split = "train"
+            elif "-test" in name:
+                subset = name.split("-test")[0]
+                split = "test"
+            elif "-validation" in name:
+                subset = name.split("-validation")[0]
+                split = "validation"
+            else:
+                continue
+
+            if subset not in configs:
+                configs[subset] = {}
+            if split not in configs[subset]:
+                configs[subset][split] = []
+            configs[subset][split].append(parquet_file.name)
+
+        # Build YAML header
+        yaml_header = f"""---
+license: {license}
 task_categories:
-- text-generation
-- text-retrieval
-language:
-- en
+"""
+        for task in task_categories:
+            yaml_header += f"  - {task}\n"
+
+        yaml_header += f"""language:
+  - en
 size_categories:
-- {self._get_size_category(total_records)}
+  - {self._get_size_category(total_records)}
+tags:
+  - ocr
+  - document-processing
+  - deepseek
+configs:
+"""
+
+        # Add config for each subset
+        for subset_name in sorted(configs.keys()):
+            yaml_header += f"  - config_name: {subset_name}\n"
+            yaml_header += "    data_files:\n"
+            for split in sorted(configs[subset_name].keys()):
+                files = configs[subset_name][split]
+                if len(files) == 1:
+                    yaml_header += f"      - split: {split}\n"
+                    yaml_header += f"        path: {files[0]}\n"
+                else:
+                    # Multiple shards
+                    yaml_header += f"      - split: {split}\n"
+                    yaml_header += f"        path: {subset_name}-{split}*.parquet\n"
+
+        # Add features schema (applies to all configs)
+        yaml_header += """dataset_info:
+  features:
+    - name: source_file
+      dtype: string
+    - name: page_number
+      dtype: int32
+    - name: split
+      dtype: string
+    - name: text
+      dtype: string
+    - name: ocr_model
+      dtype: string
+    - name: resolution
+      dtype: string
+    - name: char_count
+      dtype: int32
+    - name: word_count
+      dtype: int32
+    - name: line_count
+      dtype: int32
+    - name: is_empty
+      dtype: bool
 ---
 
-# {self.dataset_name}
+"""
+
+        # Build markdown content
+        card = yaml_header
+        card += f"""# {self.dataset_name}
 
 This dataset contains OCR-extracted text from documents processed using DeepSeek-OCR.
 
